@@ -4,3 +4,7 @@ exports.db = {
   	password: '__database_password__',
 	database: '__database_name__'
 }
+
+exports.jwt = {
+	privateKey: 'testKey'
+}

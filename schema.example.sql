@@ -7,7 +7,12 @@ CREATE OR REPLACE TABLE `comments` (
 	`color` varchar(8),
 	`comment` varchar(255),
 	PRIMARY KEY (id)
-	); 
+); 
+CREATE OR REPLACE TABLE `tokens` (
+	`id` int(10) AUTO_INCREMENT,
+	`date_time` datetime,
+	PRIMARY KEY (id)
+);  
 INSERT INTO 
 	comments (username, color, comment)
 VALUES
