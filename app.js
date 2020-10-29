@@ -32,7 +32,7 @@ app.listen(port, () => {
 app.use(express.static('public'))
 
 app.get('/getComments', (req,res) => {
-	//connect to the database and grab the comments
+	//connect to the database and grab the comments 
 
 	let connection = mysql.createConnection(dbObj);
 

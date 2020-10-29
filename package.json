@@ -5,11 +5,16 @@
   "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon app.js"
+    "build": "babel public/src --out-dir public/lib --presets react-app/prod",
+    "dev": "nodemon app.js --ignore public/lib --exec 'npm run serve'",
+    "serve": "npm run build && node app.js"
+
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-preset-react-app": "^3.1.2",
     "express": "^4.17.1",
     "jsonwebtoken": "^8.5.1",
     "mysql": "^2.18.1",
