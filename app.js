@@ -1,4 +1,4 @@
-/* modify submit comment route
+/*
  *
  * ****CHAT APP BACKEND****
  * The Chat App back end and API written by Kyle Hopkins in node.js with express 
@@ -95,7 +95,7 @@ app.post('/submitComment', (req, res) => {
 	//verify the token before submitting comment
 	jwt.verify(token, jwtKey, function(err, decoded) {
 		if (err) {
-			console.log('err refreshing token');
+			// the token is invalid
 			res.send({token: 'invalid token'});
 		} else {
 			// the token is valid
@@ -164,7 +164,7 @@ app.post('/getToken', (req, res) => {
 		// verify token and match the decoded token payload username with the db row. Update both the token along with the new req.body payload username at the same time for efficiency, return to the user the new token
 		jwt.verify(token, jwtKey, function(err, decoded) {
 			if (err) {
-				console.log('err refreshing token');
+				// the token is not valid
 				res.send({token: 'invalid token'});
 			} else {
 
