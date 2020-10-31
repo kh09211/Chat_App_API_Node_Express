@@ -8,7 +8,6 @@
     "build": "babel public/src --out-dir public/lib --presets react-app/prod",
     "dev": "nodemon app.js --ignore public/lib --exec 'npm run serve'",
     "serve": "npm run build && node app.js"
-
   },
   "author": "",
   "license": "ISC",

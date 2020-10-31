@@ -10,7 +10,7 @@ CREATE OR REPLACE TABLE `comments` (
 ); 
 CREATE OR REPLACE TABLE `tokens` (
 	`id` int(10) AUTO_INCREMENT,
-	`date_time` datetime,
+	`token` varchar(255),
 	PRIMARY KEY (id)
 );  
 INSERT INTO 
