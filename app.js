@@ -155,7 +155,7 @@ app.post('/getToken', (req, res) => {
 
 
 		//if the timer is not currently running, start it by calling pruneUsers(). pruneUsers will determine which tokens are valid, remove the invalid ones
-		if (timerOn == false) {
+		if (! timerOn) {
 			pruneUsers();
 		}
 
@@ -215,7 +215,7 @@ function pruneUsers() {
 			if (err) throw err;
 			
 			// Below will handle the timer based on the rows returned from results
-			if (results.length > 0) {
+			if (results.length > 0 && !timerOn) {
 				// if there is an active user, start the timer to prune users
 				startTimer();
 			} else if (results.length == 0) {
