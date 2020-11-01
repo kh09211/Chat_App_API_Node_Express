@@ -11,6 +11,7 @@ CREATE OR REPLACE TABLE `comments` (
 CREATE OR REPLACE TABLE `tokens` (
 	`id` int(10) AUTO_INCREMENT,
 	`token` varchar(255),
+	`color` varchar(8),
 	PRIMARY KEY (id)
 );  
 INSERT INTO 

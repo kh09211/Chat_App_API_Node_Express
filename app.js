@@ -71,7 +71,7 @@ app.get('/getComments', (req,res) => {
 
 	connection.connect();
 	// use a subquery to select only the last 30 rows
-	connection.query('SELECT * FROM (SELECT * FROM `comments` ORDER BY id DESC LIMIT 30) sub ORDER BY id ASC; SELECT username FROM tokens', 
+	connection.query('SELECT * FROM (SELECT * FROM `comments` ORDER BY id DESC LIMIT 30) sub ORDER BY id ASC; SELECT username, color FROM tokens', 
 		function(err, results, fields) {
 			if (err) throw err
 			comments = results[0];
@@ -129,6 +129,7 @@ app.post('/getToken', (req, res) => {
 	let payload = req.body;
 	let username = payload.username;
 	let token = payload.token;
+	let color = payload.color;
 	let tokenExpireTime = 4 * 60; // token will be valid for 4 minutes, front end timer should refresh at 3
 	
 
@@ -140,10 +141,10 @@ app.post('/getToken', (req, res) => {
 					'username': username
 					}, jwtKey, { expiresIn: tokenExpireTime });
 
-		//insert fresh user username and token into the tokens tabel of the database
+		//insert fresh user username, color, and token into the tokens tabel of the database
 		let connection = mysql.createConnection(dbObj);
 		connection.connect();
-		connection.query(`INSERT INTO tokens (username, token) VALUES ('${username}', '${token}')`, 
+		connection.query(`INSERT INTO tokens (username, token, color) VALUES ('${username}', '${token}','${color}')`, 
 			function(err, results, fields) {
 				if (err) throw err
 			}
@@ -161,7 +162,7 @@ app.post('/getToken', (req, res) => {
 
 	} else {
 		// the user is either changing their username or the app is refreshing the user's token
-		// verify token and match the decoded token payload username with the db row. Update both the token along with the new req.body payload username at the same time for efficiency, return to the user the new token
+		// verify token and match the decoded token payload username with the db row. Update both the token along with the new req.body payload username n color at the same time for efficiency, return to the user the new token
 		jwt.verify(token, jwtKey, function(err, decoded) {
 			if (err) {
 				// the token is not valid
@@ -177,7 +178,7 @@ app.post('/getToken', (req, res) => {
 				// UPDATE username and token into the tokens table of the database
 				let connection = mysql.createConnection(dbObj);
 				connection.connect();
-				connection.query(`UPDATE tokens SET username='${username}', token='${newToken}' WHERE username = '${decodedUsername}'`, 
+				connection.query(`UPDATE tokens SET username='${username}', token='${newToken}', color='${color}' WHERE username = '${decodedUsername}'`, 
 					function(err, results, fields) {
 						if (err) throw err
 					}
