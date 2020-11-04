@@ -74,14 +74,24 @@ app.get('/getComments/:room', (req,res) => {
 
 	connection.connect();
 	// use a subquery to select only the last 30 rows
-	connection.query(`SELECT * FROM (SELECT * FROM comments WHERE room='${room}' ORDER BY id DESC LIMIT 30) sub ORDER BY id ASC; SELECT username, color FROM tokens WHERE room='${room}';`, 
+	connection.query(`SELECT * FROM (SELECT * FROM comments WHERE room='${room}' ORDER BY id DESC LIMIT 50) sub ORDER BY id ASC; SELECT username, color FROM tokens WHERE room='${room}';`, 
 		function(err, results, fields) {
 			if (err) throw err
 			comments = results[0];
 			usernames = results[1];
 
+			//if there are 0 users, destroy the chat and send empty arrays
+			// note: this works but data stays in the databse until someone trys to enter the empty room. This self destructs when someone trys to enter which is not ideal. Moved to the timer
+			/*
+			if (usernames.length == 0) {
+				purgeEmptyRoom(room);
+				res.send({'comments': [], 'usernames': []});
+			} else {
+			*/
+
 			// send the query results to the front end
 			res.send({'comments': comments, 'usernames': usernames});
+			//}
 		}
 		);
 		
@@ -270,20 +280,53 @@ function pruneUsers() {
 
 }
 
-function purgeRoomComments(room) {
-	//Delete all empty room comment rows if any
-	if (commentsToDelete.length > 0) {
-		let commentsToDeleteString = commentsToDelete.join(', ');
+function checkForEmptyRooms() {
+	let connection = mysql.createConnection(dbObj);
+	connection.connect();
 
-		connection.query(`DELETE FROM comments WHERE id IN (${commentsToDeleteString})`, 
-			function(err, results, fields) {
-				if (err) throw err;
+	// get a list of unique room names from comments and tokens table
+	connection.query(`SELECT DISTINCT room FROM comments; SELECT DISTINCT room FROM tokens;`, 
+		function(err, results, fields) {
+			if (err) throw err;
 
-				// reset the commentsToDelete global variable
-				commentsToDelete = [];
+			// check to see if any rooms have zero users
+
+			
+			let commentsRooms = results[0];
+			let tokensRooms = results[1];
+
+			let emptyRooms = commentsRooms.filter(commentsRoom => {
+				return ! tokensRooms.some((tokensRoom) => commentsRoom.room == tokensRoom.room);
+			})
+
+			//here you will run the purgeEmptyRoom function passing the array of rooms
+			if (emptyRooms.length > 0) {
+
+				let emptyRoomsArr = emptyRooms.map(raw => `'${raw.room}'`);
+				purgeEmptyRoom(emptyRoomsArr);
 			}
-		);
-	}
+		}
+	);
+
+	connection.end();
+}
+
+function purgeEmptyRoom(roomsArr) {
+	// this function recieves the array with values wrapped in quotes, once joined this puts the rooms in the correct format to be deleted in one query
+
+	let roomsStr = roomsArr.join(', ');
+	let connection = mysql.createConnection(dbObj);
+	connection.connect();
+
+
+	//Delete all comments whos room that match any of the empty rooms in the roomsStr
+	connection.query(`DELETE FROM comments WHERE room IN (${roomsStr})`, 
+		function(err, results, fields) {
+			if (err) throw err;
+		}
+	);
+	
+	connection.end();
 }
 
 function startTimer() {
@@ -291,6 +334,7 @@ function startTimer() {
 	if (!timerOn) {
 		pruneUsersTimer = setInterval(() => {
 			pruneUsers();
+			checkForEmptyRooms();
 		}, 5000)
 		timerOn = true;
 	}
