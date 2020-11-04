@@ -36,8 +36,6 @@ let dbObj = {
 const jwtKey = config.jwt.privateKey;
 let timerOn = false;
 let pruneUsersTimer;
-global.rowsToDelete = []; // var used for global scope so that it can be used correctly within pruneUsers()
-global.commentsToDelete = []; // used globally so that it can correctly clear chat rooms with no active users
 
 // middleware for parsing application/json in the req.body
 app.use(express.json())
@@ -73,25 +71,16 @@ app.get('/getComments/:room', (req,res) => {
 	let connection = mysql.createConnection(dbObj);
 
 	connection.connect();
-	// use a subquery to select only the last 30 rows
+	// use a subquery to select only the last 50 rows
 	connection.query(`SELECT * FROM (SELECT * FROM comments WHERE room='${room}' ORDER BY id DESC LIMIT 50) sub ORDER BY id ASC; SELECT username, color FROM tokens WHERE room='${room}';`, 
 		function(err, results, fields) {
 			if (err) throw err
 			comments = results[0];
 			usernames = results[1];
 
-			//if there are 0 users, destroy the chat and send empty arrays
-			// note: this works but data stays in the databse until someone trys to enter the empty room. This self destructs when someone trys to enter which is not ideal. Moved to the timer
-			/*
-			if (usernames.length == 0) {
-				purgeEmptyRoom(room);
-				res.send({'comments': [], 'usernames': []});
-			} else {
-			*/
-
 			// send the query results to the front end
 			res.send({'comments': comments, 'usernames': usernames});
-			//}
+			
 		}
 		);
 		
@@ -115,26 +104,32 @@ app.post('/submitComment', (req, res) => {
 		} else {
 			// the token is valid
 
-			//connect to the database and submit the comment.
+			//connect to the database and submit the comment. then count the total room rows for possible cleanup
+
 			let connection = mysql.createConnection(dbObj);
 			connection.connect();
-			connection.query(`INSERT INTO comments (username, color, comment, room) VALUES ("${decoded.username}", "${color}", "${comment}", "${room}")`, 
+			connection.query(`INSERT INTO comments (username, color, comment, room) VALUES ("${decoded.username}", "${color}", "${comment}", "${room}"); SELECT COUNT(*) FROM comments WHERE room = '${room}'`, 
 				function(err, results, fields) {
 					if (err) throw err
+
+					// if row count is more than 50, delete the last room row id
+					if (results[1][0]['COUNT(*)'] > 50) {
+						
+						// nested query will end connection inside last callback
+						// Delete the first row so that the datase waste no data saving excessive chat comments
+						connection.query(`DELETE FROM comments WHERE room='${room}' ORDER BY id LIMIT 1`, 
+							function(err, results, fields) {
+								if (err) throw err
+
+								connection.end();
+							}
+						);
+					} else {
+						// end conneciton without deleting any rows
+						connection.end();
+					}
 				}
 			);
-
-
-			// Delete the first row so that the datase waste no data saving old comments
-			/*
-			connection.query('DELETE FROM comments ORDER BY id LIMIT 1', 
-				function(err, results, fields) {
-					if (err) throw err
-				}
-			);
-			*/
-				
-			connection.end();
 			
 			res.send('success');
 		}
@@ -189,7 +184,7 @@ app.post('/getToken', (req, res) => {
 			} else {
 
 				// the token is valid
-				let decodedUsername = decoded.username;
+				
 				let newToken = jwt.sign({
 										'username': username
 										}, jwtKey, { expiresIn: tokenExpireTime });
@@ -236,14 +231,15 @@ function pruneUsers() {
 	// Get all the tokens from the tokens table of the database
 	connection.query(`SELECT * FROM tokens`, 
 		function(err, results, fields) {
+			let rowsToDelete = [];
 			
 			if (err) throw err;
 			
 			// Below will handle the timer based on the rows returned from results
-			if (results.length > 0 && !timerOn) {
-				// if there is an active user, start the timer to prune users
+			if (results.length >= 0 && !timerOn) {
+				// if there is an active user or a user just entered the app and this quiery executed, start the timer to prune users
 				startTimer();
-			} else if (results.length == 0) {
+			} else if (results.length == 0 && timerOn) {
 				// if there are no users, stop the timer
 				stopTimer();
 
@@ -259,28 +255,28 @@ function pruneUsers() {
 				});
 			});
 
+			// nested query to delete any expired or non-valid tokens
+			if (rowsToDelete.length > 0) {
+				let rowsToDeleteString = rowsToDelete.join(', ');
+		
+				connection.query(`DELETE FROM tokens WHERE id IN (${rowsToDeleteString})`, 
+					function(err, results, fields) {
+						if (err) throw err;
+		
+						connection.end();
+					}
+				);
+			} else {
+				// nothing to delete
+				connection.end();
+			}
 		}
 	);
-	
-	//Delete all non-valid token rows if any
-	if (rowsToDelete.length > 0) {
-		let rowsToDeleteString = rowsToDelete.join(', ');
-
-		connection.query(`DELETE FROM tokens WHERE id IN (${rowsToDeleteString})`, 
-			function(err, results, fields) {
-				if (err) throw err;
-
-				// reset the rowsToDelete global variable
-				rowsToDelete = [];
-			}
-		);
-	}
-
-	connection.end();
-
 }
 
 function checkForEmptyRooms() {
+	// this function checks the database for any empty rooms and then purges their comments from the DB
+
 	let connection = mysql.createConnection(dbObj);
 	connection.connect();
 
@@ -299,49 +295,48 @@ function checkForEmptyRooms() {
 				return ! tokensRooms.some((tokensRoom) => commentsRoom.room == tokensRoom.room);
 			})
 
-			//here you will run the purgeEmptyRoom function passing the array of rooms
+			//here we will purge any empty rooms before ending the connection
 			if (emptyRooms.length > 0) {
 
+				// clean up the array and format it for mysql
 				let emptyRoomsArr = emptyRooms.map(raw => `'${raw.room}'`);
-				purgeEmptyRoom(emptyRoomsArr);
+				let roomsStr = emptyRoomsArr.join(', ');
+
+				// NESTED QUERY
+				//Delete all comments whos room that match any of the empty rooms in the roomsStr
+				connection.query(`DELETE FROM comments WHERE room IN (${roomsStr})`, 
+					function(err, results, fields) {
+						if (err) throw err;
+
+						//end connection
+						connection.end();
+					}
+				);
+			} else {
+				// there are no empty rooms to delete, end connection
+				connection.end();
 			}
 		}
 	);
-
-	connection.end();
 }
 
-function purgeEmptyRoom(roomsArr) {
-	// this function recieves the array with values wrapped in quotes, once joined this puts the rooms in the correct format to be deleted in one query
-
-	let roomsStr = roomsArr.join(', ');
-	let connection = mysql.createConnection(dbObj);
-	connection.connect();
-
-
-	//Delete all comments whos room that match any of the empty rooms in the roomsStr
-	connection.query(`DELETE FROM comments WHERE room IN (${roomsStr})`, 
-		function(err, results, fields) {
-			if (err) throw err;
-		}
-	);
-	
-	connection.end();
-}
 
 function startTimer() {
-	// Timer will start only if timerOn is false and exec fuction every 5 seconds
+	// Main app timer will start only if global timerOn is false and will exec fuction every 5 seconds
 	if (!timerOn) {
 		pruneUsersTimer = setInterval(() => {
 			pruneUsers();
 			checkForEmptyRooms();
 		}, 5000)
 		timerOn = true;
+		console.log('Timer Started');
 	}
 }
 
 function stopTimer() {
-	// Stop the timer started in the starTimer() function
+	// Stop the main app timer started in the starTimer() function above
 	clearInterval(pruneUsersTimer);
 	timerOn = false;
+	console.log('TimerStopped')
+	
 }
