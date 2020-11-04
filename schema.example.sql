@@ -6,12 +6,14 @@ CREATE OR REPLACE TABLE `comments` (
 	`username` varchar(20),
 	`color` varchar(8),
 	`comment` varchar(255),
+	`room` varchar(255),
 	PRIMARY KEY (id)
 ); 
 CREATE OR REPLACE TABLE `tokens` (
 	`id` int(10) AUTO_INCREMENT,
 	`token` varchar(255),
 	`color` varchar(8),
+	`room` varchar(255),
 	PRIMARY KEY (id)
 );  
 INSERT INTO 

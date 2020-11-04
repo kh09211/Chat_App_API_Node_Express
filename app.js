@@ -37,6 +37,7 @@ const jwtKey = config.jwt.privateKey;
 let timerOn = false;
 let pruneUsersTimer;
 global.rowsToDelete = []; // var used for global scope so that it can be used correctly within pruneUsers()
+global.commentsToDelete = []; // used globally so that it can correctly clear chat rooms with no active users
 
 // middleware for parsing application/json in the req.body
 app.use(express.json())
@@ -47,6 +48,7 @@ const e = require('express');
 
 // serve static assets (the react app)
 app.use(express.static('public'))
+
 
 // start the node server
 app.listen(port, () => {
@@ -62,16 +64,17 @@ app.listen(port, () => {
  *
  */
 
-app.get('/getComments', (req,res) => {
+app.get('/getComments/:room', (req,res) => {
 	//connect to the database and grab the comments along with the current users in the tokens table of the database. 
 
 	let comments;
 	let usernames;
+	let room = req.params.room;
 	let connection = mysql.createConnection(dbObj);
 
 	connection.connect();
 	// use a subquery to select only the last 30 rows
-	connection.query('SELECT * FROM (SELECT * FROM `comments` ORDER BY id DESC LIMIT 30) sub ORDER BY id ASC; SELECT username, color FROM tokens', 
+	connection.query(`SELECT * FROM (SELECT * FROM comments WHERE room='${room}' ORDER BY id DESC LIMIT 30) sub ORDER BY id ASC; SELECT username, color FROM tokens WHERE room='${room}';`, 
 		function(err, results, fields) {
 			if (err) throw err
 			comments = results[0];
@@ -91,6 +94,8 @@ app.post('/submitComment', (req, res) => {
 	let token = payload.token;
 	let color = payload.color;
 	let comment = payload.comment;
+	let room = payload.room;
+	
 
 	//verify the token before submitting comment
 	jwt.verify(token, jwtKey, function(err, decoded) {
@@ -103,18 +108,21 @@ app.post('/submitComment', (req, res) => {
 			//connect to the database and submit the comment.
 			let connection = mysql.createConnection(dbObj);
 			connection.connect();
-			connection.query(`INSERT INTO comments (username, color, comment) VALUES ("${decoded.username}", "${color}", "${comment}")`, 
+			connection.query(`INSERT INTO comments (username, color, comment, room) VALUES ("${decoded.username}", "${color}", "${comment}", "${room}")`, 
 				function(err, results, fields) {
 					if (err) throw err
 				}
 			);
 
+
 			// Delete the first row so that the datase waste no data saving old comments
+			/*
 			connection.query('DELETE FROM comments ORDER BY id LIMIT 1', 
 				function(err, results, fields) {
 					if (err) throw err
 				}
 			);
+			*/
 				
 			connection.end();
 			
@@ -130,6 +138,7 @@ app.post('/getToken', (req, res) => {
 	let username = payload.username;
 	let token = payload.token;
 	let color = payload.color;
+	let room = payload.room;
 	let tokenExpireTime = 4 * 60; // token will be valid for 4 minutes, front end timer should refresh at 3
 	
 
@@ -144,7 +153,7 @@ app.post('/getToken', (req, res) => {
 		//insert fresh user username, color, and token into the tokens tabel of the database
 		let connection = mysql.createConnection(dbObj);
 		connection.connect();
-		connection.query(`INSERT INTO tokens (username, token, color) VALUES ('${username}', '${token}','${color}')`, 
+		connection.query(`INSERT INTO tokens (username, token, color, room) VALUES ('${username}', '${token}','${color}', '${room}')`, 
 			function(err, results, fields) {
 				if (err) throw err
 			}
@@ -178,7 +187,7 @@ app.post('/getToken', (req, res) => {
 				// UPDATE username and token into the tokens table of the database
 				let connection = mysql.createConnection(dbObj);
 				connection.connect();
-				connection.query(`UPDATE tokens SET username='${username}', token='${newToken}', color='${color}' WHERE username = '${decodedUsername}'`, 
+				connection.query(`UPDATE tokens SET username='${username}', token='${newToken}', color='${color}' WHERE token = '${token}'`, 
 					function(err, results, fields) {
 						if (err) throw err
 					}
@@ -191,6 +200,11 @@ app.post('/getToken', (req, res) => {
 		});
 	}
 });
+
+// Wildcard route that serves the static index html file but keeps the url intact for the react app
+app.get('/*', (req,res) => {
+	res.sendFile('index.html',{root: './public'});
+})
 
 
 /*
@@ -222,6 +236,7 @@ function pruneUsers() {
 			} else if (results.length == 0) {
 				// if there are no users, stop the timer
 				stopTimer();
+
 			}
 
 			// Determine the validity of each token
@@ -253,6 +268,22 @@ function pruneUsers() {
 
 	connection.end();
 
+}
+
+function purgeRoomComments(room) {
+	//Delete all empty room comment rows if any
+	if (commentsToDelete.length > 0) {
+		let commentsToDeleteString = commentsToDelete.join(', ');
+
+		connection.query(`DELETE FROM comments WHERE id IN (${commentsToDeleteString})`, 
+			function(err, results, fields) {
+				if (err) throw err;
+
+				// reset the commentsToDelete global variable
+				commentsToDelete = [];
+			}
+		);
+	}
 }
 
 function startTimer() {
