@@ -29,7 +29,8 @@ let dbObj = {
 	user: config.db.user,
 	password: config.db.password,
 	database: config.db.database,
-	multipleStatements: true
+	multipleStatements: true,
+	charset : 'utf8mb4'
 };
 
 // declare other variables
