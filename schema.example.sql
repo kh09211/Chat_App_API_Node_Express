@@ -13,6 +13,7 @@ CREATE OR REPLACE TABLE `comments` (
 CREATE OR REPLACE TABLE `tokens` (
 	`id` int(10) AUTO_INCREMENT,
 	`token` varchar(255),
+	`username` varchar(255),
 	`color` varchar(8),
 	`room` varchar(255),
 	PRIMARY KEY (id),
